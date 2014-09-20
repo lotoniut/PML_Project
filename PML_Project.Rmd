@@ -1,0 +1,101 @@
+---
+title: "PML Project"
+date: "Friday, September 19, 2014"
+output: html_document
+---
+
+### Introduction
+
+Scope of the project is building a model capable of predicting the execution quality of a barbell lift exercise, given a set of measurements from sensors worn by a group of volunteers.
+
+```{r}
+library(caret);library(kernlab);library(ggplot2)
+set.seed(1978)
+```
+
+The project is carried out mainly using the caret package.
+
+
+### The Data
+
+The data set "pml-training" is provided to build this model. It contains 19622 observations, 160 variables.
+
+
+#### The quality of the data, clean-up
+
+By analyzing the provided data set, it emerges that it needs to be cleaned up to be used.
+
+1. The first step is removing the columns containing mainly NotAvailable's (NA), no values at all or not processable data (like div by 0). Scanning the data set, it turns out that the offenders are all the variables whose names begin with: avg_, kurtosis_, stddev_, var_, skewness_, min_, max_, amplitude_. 
+
+2. Additionally, the first 7 columns contain apparently non relevant data for our scopes (observation n.,name of the volunteer, time infos, time window n.). Because of that, they are also removed from the data set.
+
+```{r}
+data <- read.csv("pml-training.csv")
+
+dataRed<-data[,which(!grepl('avg',colnames(data)))]
+dataRed<-dataRed[,which(!grepl('kurtosis',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('stddev',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('var',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('skewness',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('min',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('max',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('amplitude',colnames(dataRed)))]
+dataRed<-dataRed[,-c(1:7)]
+
+```
+
+This reduces the number of actual variables to 53 (52 predictors + 1 "classe" variable).
+
+
+### The cross validation
+
+The dataRed data set is then sliced into a training set and a test set.
+Following the general guidelines, 60% of the observations are (randomly, to reduce the bias) assigned to the first, 40% to the second, ensuring that both have a coherent distribution of the 5 classes of the variable "classe".
+
+```{r}
+inTrain <- createDataPartition(y=dataRed$classe,p=0.60,list=FALSE)
+training <- dataRed[inTrain,]
+testing<-dataRed[-inTrain,]
+```
+
+The training set will be used to train the model and to obtain the first relevant metrics about its performance (basically the accuracy and kappa).
+
+The test set will then be used to test the model, **obtaining a more realistic indication of its performance, as it will be estimated using "unknown" data (i.e. not used, implicitely or explicitely to build the model).**
+
+
+### The model
+
+The available predictors are all continuous variables, while the outcome is a categorical one.
+This leads to use classification algorithms; among them, I choose the the random forest, mainly because of its high level of accuracy.
+
+Concerning the **pre processing**, although some variables are characterized by significantly skewed distributions, some tests I carried out do not show any increase of accuracy by adopting, for example, a centering and scaling approach. 
+
+
+### The results
+
+```{r}
+modFit=train(classe ~ .,method = "rf",data=training)
+plot(modFit$finalModel)
+```
+
+Interestingly, the error of the model decreases until circa 150 trees: increasing the size of the forest beyond that doesn't bring any further benefit in that respect.
+
+```{r}
+modFit
+```
+
+Concerning the performance in the training set, accuracy and kappa have excellent values. Since we are still working with the training set, these figures themselves do not imply anything about the performance of the model (it might be well a problem of overfitting!)
+
+As said, to get a more realistic estimation, we need to apply the model to the testing data set:
+
+```{r}
+OS_prediction <- predict(modFit,testing)
+C_matrix <- confusionMatrix(OS_prediction,testing$classe)
+C_matrix
+```
+
+As expected, accuracy and kappa in the Out of Sample data are lower than in the In Sample data.
+
+I find their values plausible and, for our scopes, satisfactory; furthermore, the statistics by class show a fairly consistent behaviour across all the classes.
+
+That gives me enough confidence in the model to move to the next stage, using it to predict the 20 cases in the "pml-testing.csv" data set.
